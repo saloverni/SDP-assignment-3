@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.example.sender.MessageSender;
 
-/** Educational transformation only: Base64 is encoding, not secure encryption. */
 public class EncryptedNotification extends Notification {
     public EncryptedNotification(MessageSender sender) { super(sender); }
 

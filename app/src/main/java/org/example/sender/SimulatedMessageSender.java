@@ -1,11 +1,9 @@
 package org.example.sender;
 
-/* Common validation and availability control for simulated providers. */
 public abstract class SimulatedMessageSender implements MessageSender {
     private boolean available = true;
 
     public void setAvailable(boolean available) { this.available = available; }
-
 
     @Override
     public boolean isAvailable() { return available; }

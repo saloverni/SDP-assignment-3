@@ -1,35 +1,63 @@
-# Multi-Channel Notification Gateway — Bridge Pattern
+# Multi-Channel Notification Gateway
 
-Учебное задание №3 по Software Design Patterns. Java 21, Gradle, JUnit 5.
-Все каналы симулируются: сообщения печатаются в консоль, внешние API и учётные данные не нужны.
+A Java application that uses the Bridge pattern to separate notification types from delivery providers. All providers are simulated and print messages to the console; no external services or credentials are required.
 
-## Запуск и проверка
+## Requirements and Usage
 
-Требуются JDK 21+ и доступ к интернету при первом запуске для загрузки Gradle и зависимостей.
+The project uses Java 21, Gradle Wrapper, and JUnit 5. Install JDK 21 or newer. Internet access is required on the first run to download Gradle and dependencies. Gradle can automatically provision the Java 21 toolchain.
 
 ```bash
-./gradlew :app:run
-./gradlew :app:test
-./gradlew :app:build
+./gradlew run
+./gradlew test
+./gradlew build
 ```
 
-На Windows используйте `gradlew.bat` вместо `./gradlew`.
-Проект использует Java toolchain 21; Gradle может загрузить его автоматически.
-HTML-отчёт тестов: `app/build/reports/tests/test/index.html`.
+On Windows, use `gradlew.bat` instead of `./gradlew`.
 
-## Демонстрация
+The entry point is `app/src/main/java/org/example/Main.java`. The test report is generated at `app/build/reports/tests/test/index.html`.
 
-`app/src/main/java/org/example/Main.java` последовательно показывает:
+## Delivery Providers
 
-1. `UrgentNotification + TelegramMessageSender` — сообщение с `[URGENT]`.
-2. `EncryptedNotification + EmailMessageSender` — преобразование UTF-8 сообщения в Base64.
-3. `ScheduledBatchNotification + SmsMessageSender` — три получателя, два успеха и один отказ из-за длины.
-4. Переключение того же объекта `urgent` с Telegram на Email через `setSender()`.
-5. Недоступный Telegram и успешная отправка через резервный SMS.
-6. `MarketingNotification + PushNotificationSender` — расширение обеих независимых иерархий.
-7. Дополнительно: `EncryptedNotification + KafkaEventSender` — публикация события.
+| Provider | Behavior |
+| --- | --- |
+| `TelegramMessageSender` | Formats the title with `<b>` tags. |
+| `EmailMessageSender` | Includes a subject and signature. |
+| `SmsMessageSender` | Sends only the body, limited to 160 Unicode code points. Rejects longer messages without truncation. |
+| `KafkaEventSender` | Simulates publishing an event containing the recipient, title, and payload. |
+| `PushNotificationSender` | Simulates an alert sent to a device. |
 
-Итог пакета в демонстрации:
+`SimulatedMessageSender` provides shared input validation and availability control. Calling `setAvailable(false)` disables a provider. Unavailable providers and invalid delivery input return `false` without publishing a message.
+
+The SMS limit applies to the final body, including notification prefixes and transformations. GSM segmentation is not simulated.
+
+## Notification Types
+
+| Notification | Behavior |
+| --- | --- |
+| `UrgentNotification` | Adds `[URGENT]`, checks provider availability, and tries fallback providers in order if the primary provider is unavailable or delivery fails. |
+| `EncryptedNotification` | Encodes the UTF-8 message using Base64 before delivery. Base64 is reversible encoding, not secure encryption. |
+| `ScheduledBatchNotification` | Queues recipients and messages, then sends them together through `sendBatch()`. |
+| `MarketingNotification` | Adds a promotional prefix and an unsubscribe instruction. |
+
+Urgent delivery stops at the first successful provider. If all providers fail, it prints a failure message. Fallback delivery does not replace the primary provider.
+
+For batch notifications, `send(recipient, message)` adds a delivery to the queue. `sendBatch()` uses the currently selected provider, returns a `Summary`, prints totals, and clears the queue, including failed deliveries. The caller controls dispatch time; there is no background timer. Repeated recipients are treated as separate deliveries. An empty batch returns zero totals.
+
+Notification methods reject blank recipients or messages with `IllegalArgumentException`. Passing a null provider throws `NullPointerException`.
+
+## Demo
+
+`Main` demonstrates:
+
+1. Urgent notification through Telegram.
+2. Base64-encoded notification through Email.
+3. Batch delivery through SMS, including an oversized message that fails.
+4. Switching the same notification object from Telegram to Email at runtime.
+5. Unavailable Telegram with SMS fallback.
+6. Marketing notification through Push.
+7. Base64-encoded event through Kafka.
+
+The SMS batch prints:
 
 ```text
 Total: 3
@@ -37,20 +65,23 @@ Successful: 2
 Failed: 1
 ```
 
-## Поведение
+## Bridge Architecture
 
-- Telegram оформляет заголовок тегом `<b>`; Email выводит тему и подпись.
-- SMS отправляет только тело: максимум `SmsMessageSender.MAX_LENGTH = 160` Unicode code points. Длинные сообщения отклоняются без обрезания. Префиксы и преобразования уведомлений учитываются в итоговой длине. Это учебное ограничение, а не моделирование GSM-сегментации.
-- Kafka печатает событие с получателем, заголовком и полезной нагрузкой; Push имитирует уведомление устройства.
-- Любой провайдер можно отключить через `setAvailable(false)`. Недоступный провайдер возвращает `false`, не публикуя сообщение.
-- Срочное уведомление сначала проверяет доступность основного канала. При недоступности или отказе отправки последовательно пробует резервные каналы через интерфейс `MessageSender`. Первый успех прекращает попытки; полный отказ явно выводится. Резервная отправка не меняет основной канал.
-- Base64 — обратимое кодирование для выполнения учебного условия, не защищённое шифрование.
-- `ScheduledBatchNotification.send(recipient, message)` ставит доставку в очередь. `sendBatch()` отправляет очередь текущим провайдером, возвращает `Summary`, печатает статистику и очищает очередь, включая неуспешные доставки. Момент запуска задаёт вызывающий код; фонового таймера нет. Пустой пакет даёт три нуля. Повторяющиеся получатели разрешены как отдельные доставки.
-- Некорректный ввод уведомления вызывает `IllegalArgumentException`; `null` вместо провайдера — `NullPointerException`. Провайдеры возвращают `false` для недопустимого ввода. Ожидаемые ошибки доставки представлены результатом `boolean`.
+The two independent dimensions are **notification behavior** and **delivery channel**.
+
+The bridge is the `protected MessageSender sender` field in `Notification`. Each notification delegates delivery through the `MessageSender` interface. The constructor selects the initial provider, and `setSender()` replaces it at runtime without changing the notification object.
+
+Combining both dimensions through inheritance would require classes such as `UrgentTelegramNotification` and `UrgentEmailNotification`, duplicating behavior across up to N × M combinations. Bridge separates these into N notification types and M providers.
+
+A new provider implements `MessageSender` or extends `SimulatedMessageSender`. `PushNotificationSender` demonstrates this extension: existing notification classes require no changes.
+
+A new notification type extends `Notification` and delegates delivery to `sender`. `MarketingNotification` demonstrates this extension: existing provider classes require no changes. Provider restrictions, such as the SMS length limit, still apply.
+
+This is Bridge rather than Adapter because the design connects two independently extensible hierarchies through composition. It does not translate an existing incompatible interface into another interface.
+
+Notification classes depend only on `MessageSender`, without concrete provider imports or `instanceof` checks. `Main` assembles the concrete combinations.
 
 ## UML Class Diagram
-
-GitHub отображает следующую диаграмму Mermaid. Общий базовый класс симуляторов содержит только техническую логику провайдеров.
 
 ```mermaid
 classDiagram
@@ -123,29 +154,15 @@ classDiagram
     SimulatedMessageSender <|-- PushNotificationSender
 ```
 
-## Ответы на вопросы
+## Tests
 
-1. **Два независимых измерения:** политика уведомления (срочное, преобразованное, пакетное, маркетинговое) и канал доставки (Telegram, Email, SMS, Kafka, Push).
-2. **Где Bridge:** поле `protected MessageSender sender` в `Notification`. Абстракция делегирует доставку этому объекту через интерфейс; конструктор и `setSender()` позволяют выбрать реализацию.
-3. **Почему одного наследования недостаточно:** классы вроде `UrgentTelegramNotification` и `UrgentEmailNotification` дублируют политику и доставку. Для N типов и M каналов возникает N × M комбинаций. Bridge разделяет их на N + M реализаций двух измерений.
-4. **Новый провайдер:** реализуем `MessageSender` либо наследуем общий симулятор. `PushNotificationSender` добавляет только поведение Push и сразу работает с существующими уведомлениями. Их исходники менять не требуется.
-5. **Новый тип уведомления:** наследуем `Notification`, определяем политику и вызываем методы `sender`. `MarketingNotification` добавляет промопрефикс и инструкцию отписки, работая со всеми существующими провайдерами без их изменения. Возможный отказ SMS из-за длины остаётся правилом самого SMS.
-6. **Почему Bridge, а не Adapter:** архитектура заранее разделяет две независимо расширяемые иерархии и связывает их композицией. Здесь нет чужого несовместимого интерфейса, который требуется приспособить. Adapter решал бы именно такую задачу совместимости.
+`NotificationGatewayTest` contains 21 JUnit 5 tests covering:
 
-Ни одна абстракция не импортирует конкретные провайдеры и не использует `instanceof`. Конкретные комбинации собирает только клиентский код `Main`.
-
-## Тесты
-
-`NotificationGatewayTest` содержит 21 JUnit 5-тест: успешная отправка всеми провайдерами, недоступность, префикс срочности, резервирование при недоступности и отказе, несколько резервов, полный отказ, границы SMS 160/161 и Unicode, Base64/UTF-8, отложенная отправка пакета, частичный и полный отказ пакета, очистка очереди, runtime-переключение, Push со старым типом, Marketing со всеми провайдерами, валидация и различия форматов.
-
-## Подготовка к защите
-
-- Начните с поля `Notification.sender`, затем покажите вызов `sender.sendMessage()` и две иерархии на UML.
-- Для WhatsApp добавьте класс в `org.example.sender`, реализующий `MessageSender` или наследующий `SimulatedMessageSender`, и передайте его существующему уведомлению.
-- Для лимита SMS 120 измените `MAX_LENGTH` и граничные тесты.
-- Для `SilentNotification` создайте наследника `Notification` с нужной политикой отправки.
-- Для отключения Email вызовите `email.setAvailable(false)`; срочному уведомлению передайте резервный канал или переключите провайдер через `setSender()`.
-- Несколько резервов задаются конструктором: `new UrgentNotification(telegram, sms, email)`.
-- После изменения выполните тесты и демонстрацию командами выше.
-
-Для сдачи загрузите проект в свой GitHub-репозиторий и передайте ссылку через Moodle. README содержит UML и объяснение архитектуры.
+- Successful delivery and unavailable providers.
+- Urgent prefixes, fallback ordering, delivery failures, and exhausted fallbacks.
+- SMS boundaries at 160 and 161 characters, including Unicode.
+- Base64 transformation and UTF-8 round trips.
+- Batch queuing, summary counts, partial failures, unavailable providers, and queue clearing.
+- Runtime provider switching.
+- Push with existing notifications and Marketing with every provider.
+- Input validation and provider-specific formatting.

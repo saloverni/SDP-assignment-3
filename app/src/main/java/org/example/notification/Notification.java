@@ -3,7 +3,6 @@ package org.example.notification;
 import java.util.Objects;
 import org.example.sender.MessageSender;
 
-/** Abstraction. The sender reference is the Bridge to the Implementor. */
 public abstract class Notification {
     protected MessageSender sender;
 

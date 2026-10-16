@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.example.sender.MessageSender;
 
-/** Queues deliveries; the caller decides when to dispatch the batch. */
 public class ScheduledBatchNotification extends Notification {
     private record PendingMessage(String recipient, String message) { }
     public record Summary(int total, int successful, int failed) { }
@@ -12,14 +11,12 @@ public class ScheduledBatchNotification extends Notification {
 
     public ScheduledBatchNotification(MessageSender sender) { super(sender); }
 
-    /** Adds a recipient and message to the next scheduled batch. */
     @Override
     public void send(String recipient, String message) {
         validate(recipient, message);
         pending.add(new PendingMessage(recipient, message));
     }
 
-    /** Sends the queue using the currently selected provider and clears it. */
     public Summary sendBatch() {
         int total = pending.size();
         int successful = 0;
